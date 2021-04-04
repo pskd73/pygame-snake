@@ -42,12 +42,6 @@ class Direction(Enum):
     EAST = 'EAST'
 
 
-class Turn:
-    def __init__(self, coordinates: Coordinates, to_direction: Direction):
-        self.coordinates = coordinates
-        self.to_direction = to_direction
-
-
 class BoardUpdateResponse:
     def __init__(
             self,
