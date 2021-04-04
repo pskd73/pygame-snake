@@ -129,41 +129,37 @@ class Fruit:
 
 
 class Board:
-    BOARD_SIZE = Size(400, 400)
-    BLOCK_SIZE = Size(20, 20)
-
-    def __init__(self):
+    def __init__(self, surface, size: Size, block_size: Size):
+        self.surface = surface
+        self.size = size
+        self.block_size = block_size
         self.snake_blocks: List[SnakeBlock] = [
             SnakeBlock(
-                Coordinates(self.BLOCK_SIZE.w * 2, 0),
-                self.BLOCK_SIZE,
+                Coordinates(self.block_size.w * 2, 0),
+                self.block_size,
                 Color(255, 0, 255),
                 Direction.EAST
             ),
             SnakeBlock(
-                Coordinates(self.BLOCK_SIZE.w, 0),
-                self.BLOCK_SIZE,
+                Coordinates(self.block_size.w, 0),
+                self.block_size,
                 Color(255, 0, 0),
                 Direction.EAST
             ),
             SnakeBlock(
                 Coordinates(0, 0),
-                self.BLOCK_SIZE,
+                self.block_size,
                 Color(255, 0, 0),
                 Direction.EAST
             )
         ]
-        self.size = self.BOARD_SIZE
         self.speed = 8  # scenes per second
-        self.surface = None
         self.turns = set()
         self.should_add_block = False
         self.fruit = self.new_fruit()
         self.init()
 
     def init(self):
-        pygame.init()
-        self.surface = pygame.display.set_mode((self.size.w, self.size.h))
         self.clear()
 
     def add_snake_block(self, snake_block: SnakeBlock):
@@ -173,11 +169,11 @@ class Board:
         self.surface.fill((0, 0, 0))
 
     def new_fruit(self) -> Fruit:
-        coords = Fruit.get_random_coordinates(self.size, self.BLOCK_SIZE)
+        coords = Fruit.get_random_coordinates(self.size, self.block_size)
         for block in self.snake_blocks:
             if block.coordinates == coords:
                 return self.new_fruit()
-        return Fruit(coords, self.BLOCK_SIZE, Color(192, 192, 192))
+        return Fruit(coords, self.block_size, Color(192, 192, 192))
 
     @staticmethod
     def is_opposite_direction(dir_1: Direction, dir_2: Direction) -> bool:
@@ -257,7 +253,11 @@ class Board:
         return BoardUpdateResponse(False)
 
 
-board = Board()
+BOARD_SIZE = Size(400, 400)
+BLOCK_SIZE = Size(20, 20)
+pygame.init()
+surface = pygame.display.set_mode((400, 400))
+board = Board(surface, BOARD_SIZE, BLOCK_SIZE)
 running = True
 while running:
     for event in pygame.event.get():
