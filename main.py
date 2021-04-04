@@ -21,6 +21,9 @@ class Size:
         self.w = w
         self.h = h
 
+    def to_tuple(self):
+        return self.w, self.h
+
 
 class Color:
     def __init__(self, r: int, g: int, b: int):
@@ -88,13 +91,6 @@ class Fruit:
             )
         )
 
-    @classmethod
-    def get_random_coordinates(cls, board_size: Size, block_size: Size) -> Coordinates:
-        x_blocks = board_size.w // block_size.w
-        y_blocks = board_size.h // block_size.h
-        rand_x, rand_y = random.randint(0, x_blocks - 1), random.randint(0, y_blocks - 1)
-        return Coordinates(rand_x, rand_y)
-
 
 class Board:
     HEAD_COLOR = Color(255, 0, 255)
@@ -112,21 +108,20 @@ class Board:
         ])
         self.speed = 10  # scenes per second
         self.should_add_block = False
-        self.fruit = self.new_fruit()
         self.direction = Direction.EAST
+        self.x_blocks = self.size.w // self.block_size.w
+        self.y_blocks = self.size.h // self.block_size.h
+        self.fruit = self.new_fruit()
         self.init()
 
     def init(self):
         self.clear()
 
-    def add_snake_block(self, snake_block: SnakeBlock):
-        self.snake_blocks.append(snake_block)
-
     def clear(self):
         self.surface.fill((0, 0, 0))
 
     def new_fruit(self) -> Fruit:
-        coords = Fruit.get_random_coordinates(self.size, self.block_size)
+        coords = Coordinates(random.randint(0, self.x_blocks - 1), random.randint(0, self.y_blocks - 1))
         for block in self.snake_blocks:
             if block.coordinates == coords:
                 return self.new_fruit()
@@ -157,9 +152,9 @@ class Board:
             return False
         if snake_block.coordinates.y < 0:
             return False
-        if snake_block.coordinates.x >= self.size.w:
+        if snake_block.coordinates.x >= self.x_blocks:
             return False
-        if snake_block.coordinates.y >= self.size.h:
+        if snake_block.coordinates.y >= self.y_blocks:
             return False
         if len([b for b in self.snake_blocks if b.coordinates == snake_block.coordinates]) > 1:
             return False
@@ -196,9 +191,9 @@ class Board:
 
 
 BOARD_SIZE = Size(400, 400)
-BLOCK_SIZE = Size(20, 20)
+BLOCK_SIZE = Size(4, 4)
 pygame.init()
-surface = pygame.display.set_mode((400, 400))
+surface = pygame.display.set_mode(BOARD_SIZE.to_tuple())
 board = Board(surface, BOARD_SIZE, BLOCK_SIZE)
 running = True
 pause = False
@@ -215,8 +210,6 @@ while running:
                 board.turn(Direction.NORTH)
             elif event.key == pygame.K_DOWN:
                 board.turn(Direction.SOUTH)
-            elif event.key == pygame.K_0:
-                board.should_add_block = True
             elif event.key == pygame.K_SPACE:
                 pause = not pause
     if not pause:
