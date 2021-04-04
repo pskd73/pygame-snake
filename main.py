@@ -1,4 +1,5 @@
 import random
+from collections import deque
 from enum import Enum
 from time import sleep
 from typing import List, Optional
@@ -57,25 +58,13 @@ class SnakeBlock:
             self,
             coordinates: Coordinates,
             size: Size,
-            color: Color,
-            direction: Direction
+            color: Color
     ):
         self.coordinates = coordinates
         self.size = size
         self.color = color
-        self.direction = direction
         self.border_width = 2
         self.border_color = Color(255, 255, 0)
-
-    def move(self):
-        if self.direction == Direction.WEST:
-            self.coordinates = Coordinates(self.coordinates.x - self.size.w, self.coordinates.y)
-        elif self.direction == Direction.SOUTH:
-            self.coordinates = Coordinates(self.coordinates.x, self.coordinates.y + self.size.h)
-        elif self.direction == Direction.EAST:
-            self.coordinates = Coordinates(self.coordinates.x + self.size.w, self.coordinates.y)
-        else:
-            self.coordinates = Coordinates(self.coordinates.x, self.coordinates.y - self.size.h)
 
     def draw(self, surface):
         pygame.draw.rect(
@@ -129,34 +118,34 @@ class Fruit:
 
 
 class Board:
+    HEAD_COLOR = Color(255, 0, 255)
+    BLOCK_COLOR = Color(255, 0, 0)
+
     def __init__(self, surface, size: Size, block_size: Size):
         self.surface = surface
         self.size = size
         self.block_size = block_size
-        self.snake_blocks: List[SnakeBlock] = [
+        self.snake_blocks = deque([
             SnakeBlock(
                 Coordinates(self.block_size.w * 2, 0),
                 self.block_size,
-                Color(255, 0, 255),
-                Direction.EAST
+                self.HEAD_COLOR
             ),
             SnakeBlock(
                 Coordinates(self.block_size.w, 0),
                 self.block_size,
-                Color(255, 0, 0),
-                Direction.EAST
+                self.BLOCK_COLOR
             ),
             SnakeBlock(
                 Coordinates(0, 0),
                 self.block_size,
-                Color(255, 0, 0),
-                Direction.EAST
+                self.BLOCK_COLOR
             )
-        ]
-        self.speed = 8  # scenes per second
-        self.turns = set()
+        ])
+        self.speed = 10  # scenes per second
         self.should_add_block = False
         self.fruit = self.new_fruit()
+        self.direction = Direction.EAST
         self.init()
 
     def init(self):
@@ -186,26 +175,14 @@ class Board:
         return False
 
     def turn(self, to_direction: Direction):
-        head_block = self.snake_blocks[0]
-        if head_block.direction == to_direction:
+        if self.direction == to_direction:
             return
-        if self.is_opposite_direction(head_block.direction, to_direction):
+        if self.is_opposite_direction(self.direction, to_direction):
             return
-        self.turns.add(Turn(head_block.coordinates, to_direction))
+        self.direction = to_direction
 
     def get_delay_secs(self):
         return 1 / self.speed
-
-    def apply_turns(self, idx: int, snake_block: SnakeBlock):
-        # TODO: this logic breaks if there are two turns at a same coordinate
-        finished_turn = None
-        for turn in self.turns:
-            if snake_block.coordinates == turn.coordinates:
-                snake_block.direction = turn.to_direction
-                if idx == len(self.snake_blocks) - 1:
-                    finished_turn = turn
-        if finished_turn:
-            self.turns.remove(finished_turn)
 
     def is_valid_block(self, snake_block: SnakeBlock):
         if snake_block.coordinates.x < 0:
@@ -220,31 +197,33 @@ class Board:
             return False
         return True
 
-    def try_get_new_block(self, idx: int, snake_block: SnakeBlock) -> Optional[SnakeBlock]:
-        if idx == len(self.snake_blocks) - 1 and self.should_add_block:
-            self.should_add_block = False
-            return SnakeBlock(
-                snake_block.coordinates,
-                snake_block.size,
-                snake_block.color,
-                snake_block.direction
-            )
+    def get_next_head(self) -> SnakeBlock:
+        head = self.snake_blocks[0]
+        if self.direction == Direction.WEST:
+            new_coords = Coordinates(head.coordinates.x - self.block_size.w, head.coordinates.y)
+        elif self.direction == Direction.SOUTH:
+            new_coords = Coordinates(head.coordinates.x, head.coordinates.y + self.block_size.h)
+        elif self.direction == Direction.EAST:
+            new_coords = Coordinates(head.coordinates.x + self.block_size.w, head.coordinates.y)
+        else:
+            new_coords = Coordinates(head.coordinates.x, head.coordinates.y - self.block_size.h)
+        return SnakeBlock(
+            new_coords,
+            head.size,
+            self.HEAD_COLOR
+        )
 
     def update(self) -> BoardUpdateResponse:
         self.clear()
-        new_block = None
-        for i, snake_block in enumerate(self.snake_blocks):
-            self.apply_turns(i, snake_block)
-            new_block = self.try_get_new_block(i, snake_block)
-            snake_block.move()
-            if not self.is_valid_block(snake_block):
-                return BoardUpdateResponse(True)
-            if snake_block.coordinates == self.fruit.coordinates:
-                self.should_add_block = True
-                self.fruit = self.new_fruit()
-                self.speed += 2
-        if new_block is not None:
-            self.snake_blocks.append(new_block)
+        self.snake_blocks[0].color = self.BLOCK_COLOR
+        self.snake_blocks.appendleft(self.get_next_head())
+        if not self.is_valid_block(self.snake_blocks[0]):
+            return BoardUpdateResponse(True)
+        if self.snake_blocks[0].coordinates == self.fruit.coordinates:
+            self.fruit = self.new_fruit()
+            self.speed += 2
+        else:
+            self.snake_blocks.pop()
         for snake_block in self.snake_blocks:
             snake_block.draw(self.surface)
         self.fruit.draw(self.surface)
@@ -253,10 +232,10 @@ class Board:
         return BoardUpdateResponse(False)
 
 
-BOARD_SIZE = Size(800, 800)
+BOARD_SIZE = Size(400, 400)
 BLOCK_SIZE = Size(20, 20)
 pygame.init()
-surface = pygame.display.set_mode((800, 800))
+surface = pygame.display.set_mode((400, 400))
 board = Board(surface, BOARD_SIZE, BLOCK_SIZE)
 running = True
 pause = False
