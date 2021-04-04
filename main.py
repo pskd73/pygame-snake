@@ -253,12 +253,13 @@ class Board:
         return BoardUpdateResponse(False)
 
 
-BOARD_SIZE = Size(400, 400)
+BOARD_SIZE = Size(800, 800)
 BLOCK_SIZE = Size(20, 20)
 pygame.init()
-surface = pygame.display.set_mode((400, 400))
+surface = pygame.display.set_mode((800, 800))
 board = Board(surface, BOARD_SIZE, BLOCK_SIZE)
 running = True
+pause = False
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -274,6 +275,9 @@ while running:
                 board.turn(Direction.SOUTH)
             elif event.key == pygame.K_0:
                 board.should_add_block = True
-    res = board.update()
-    if res.game_over:
-        exit(1)
+            elif event.key == pygame.K_SPACE:
+                pause = not pause
+    if not pause:
+        res = board.update()
+        if res.game_over:
+            exit(1)
