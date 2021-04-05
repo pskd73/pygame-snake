@@ -36,10 +36,10 @@ class Color:
 
 
 class Direction(Enum):
-    NORTH = 'NORTH'
-    WEST = 'WEST'
-    SOUTH = 'SOUTH'
-    EAST = 'EAST'
+    NORTH = (0, -1)
+    WEST = (-1, 0)
+    SOUTH = (0, 1)
+    EAST = (1, 0)
 
 
 class BoardUpdateResponse:
@@ -121,20 +121,10 @@ class Board:
                 return self.new_fruit()
         return Fruit(coords, self.block_size, self.FRUIT_COLOR)
 
-    @staticmethod
-    def is_opposite_direction(dir_1: Direction, dir_2: Direction) -> bool:
-        opposite_dirs = [
-            (Direction.EAST.value, Direction.WEST.value),
-            (Direction.NORTH.value, Direction.SOUTH.value)
-        ]
-        if tuple(sorted([dir_1.value, dir_2.value])) in opposite_dirs:
-            return True
-        return False
-
     def turn(self, to_direction: Direction):
         if self.direction == to_direction:
             return
-        if self.is_opposite_direction(self.direction, to_direction):
+        if self.direction.value[0] + to_direction.value[0] == 0 or self.direction.value[1] + to_direction.value[1] == 0:
             return
         self.direction = to_direction
 
@@ -156,15 +146,12 @@ class Board:
 
     def get_next_head(self) -> SnakeBlock:
         head = self.snake_blocks[0]
-        if self.direction == Direction.WEST:
-            change = (-1, 0)
-        elif self.direction == Direction.SOUTH:
-            change = (0, 1)
-        elif self.direction == Direction.EAST:
-            change = (1, 0)
-        else:
-            change = (0, -1)
-        return SnakeBlock(Coordinates(head.coordinates.x + change[0], head.coordinates.y + change[1]))
+        return SnakeBlock(
+            Coordinates(
+                head.coordinates.x + self.direction.value[0],
+                head.coordinates.y + self.direction.value[1]
+            )
+        )
 
     def update(self) -> BoardUpdateResponse:
         self.clear()
