@@ -1,106 +1,154 @@
-import asyncio
-import json
+import random
+import socket
 import uuid
-from enum import Enum
-from typing import List
+from collections import deque
+from time import sleep
+from typing import List, Dict
 
-import websockets
+from game import Coordinates, Direction, Size
+from socket_thread import SocketThread
+
+s = socket.socket()
+s.bind(('', 8082))
+s.listen(5)
 
 
-class GameStatus(Enum):
-    CREATED = 'CREATED'
-    IN_PROGRESS = 'IN_PROGRESS'
-    FINISHED = 'FINISHED'
+class Snake:
+    def __init__(self, blocks: List[Coordinates], st: SocketThread):
+        self.blocks = deque(blocks)
+        self.direction = Direction.EAST
+        self.st = st
 
+    def turn(self, to_direction: Direction):
+        if self.direction == to_direction:
+            return
+        if self.direction.value[0] + to_direction.value[0] == 0 or self.direction.value[1] + to_direction.value[1] == 0:
+            return
+        self.direction = to_direction
 
-class Player:
-    def __init__(self, player_id, socket):
-        self.player_id = player_id
-        self.socket = socket
+    def get_next_head(self) -> Coordinates:
+        head = self.blocks[0]
+        return Coordinates(
+            head.x + self.direction.value[0],
+            head.y + self.direction.value[1]
+        )
 
-    async def send(self, message):
-        await self.socket.send(json.dumps(message))
+    def are_coordinates_inside(self, coordinates: Coordinates):
+        for block in self.blocks:
+            if block == coordinates:
+                return True
+        return False
+
+    def move(self, fruit, x_blocks: int, y_blocks: int):
+        next_head = self.get_next_head()
+        if next_head.x < 0 or \
+            next_head.y < 0 or \
+            next_head.y > y_blocks or \
+            next_head.x > x_blocks or \
+            self.are_coordinates_inside(next_head):
+            raise ValueError('Invalid move')
+        self.blocks.appendleft(next_head)
+        if self.blocks[0] == fruit:
+            return True
+        else:
+            self.blocks.pop()
+
+    def get_state(self) -> dict:
+        return {
+            'blocks': [b.__dict__ for b in self.blocks],
+            'direction': self.direction.name
+        }
 
 
 class Game:
     MAX_PLAYERS = 2
 
     def __init__(self):
-        self.players: List[Player] = []
-        self.status = GameStatus.CREATED
+        self.snakes: Dict[str, Snake] = {}
+        self.fruit: Coordinates = None
+        self.size = Size(400, 400)
+        self.block_size = Size(8, 8)
+        self.x_blocks = self.size.w // self.block_size.w
+        self.y_blocks = self.size.h // self.block_size.h
 
-    async def add_player(self, player: Player) -> int:
-        assert self.is_waiting()
-        self.players.append(player)
-        if len(self.players) == self.MAX_PLAYERS:
-            self.status = GameStatus.IN_PROGRESS
-        return len(self.players) - 1
+    def new_fruit(self) -> Coordinates:
+        coords = Coordinates(random.randint(0, self.x_blocks - 1), random.randint(0, self.y_blocks - 1))
+        for snake in self.snakes.values():
+            if snake.are_coordinates_inside(coords):
+                return self.new_fruit()
+        return coords
 
-    def is_waiting(self):
-        return self.status == GameStatus.CREATED
+    def is_vacant(self):
+        return len(self.snakes) < self.MAX_PLAYERS
 
-    async def start(self):
+    def add_player(self, st: SocketThread):
+        assert self.is_vacant()
+        self.snakes[st.sid] = Snake([Coordinates(0, 0)], st)
+        st.send({'type': 'init', 'id': st.sid})
+        if not self.is_vacant():
+            for snake in self.snakes.values():
+                snake.st.send({
+                    'type': 'start',
+                    'players': [s.st.sid for s in self.snakes.values()],
+                    'board_size': self.size.__dict__,
+                    'block_size': self.block_size.__dict__
+                })
+            self.start()
+
+    def get_state(self) -> dict:
+        return {
+            'snakes': [snake.get_state() for snake in self.snakes.values()],
+            'fruit': self.fruit.__dict__
+        }
+
+    def start(self):
+        self.fruit = self.new_fruit()
         while True:
-            await self.clock()
-            await asyncio.sleep(0.1)
+            for snake in self.snakes.values():
+                try:
+                    eaten = snake.move(self.fruit, self.x_blocks, self.y_blocks)
+                except ValueError as e:
+                    print('game over')
+                    return
+                if eaten:
+                    self.fruit = self.new_fruit()
+            for snake in self.snakes.values():
+                snake.st.send({
+                    'type': 'state',
+                    **self.get_state()
+                })
+            sleep(0.2)
 
-    async def clock(self):
-        for player in self.players:
-            await player.send({'type': 'move'})
+    def turn(self, player_id: str, direction):
+        self.snakes[player_id].turn(Direction[direction])
 
-    def get_init_state(self):
-        state = {'players': []}
-        for i, player in enumerate(self.players):
-            state['players'].append({
-                'player_id': player.player_id,
-                'position': (0, i * 2)
-            })
-        return state
 
-    async def listen_to_player(self, player: Player):
-        message = json.loads(await player.socket.recv())
-        if message['type'] == 'turn':
-            for _player in self.players:
-                await _player.send(message)
+class Player(SocketThread):
+    def __init__(self, s, sid, game: Game):
+        super(Player, self).__init__(s, sid)
+        self.game = game
+
+    def on_turn(self, message):
+        self.game.turn(self.sid, message['direction'])
 
 
 games: List[Game] = []
 
 
-async def find_game(player: Player) -> (Game, int):
+def find_game() -> Game:
     for game in games:
-        try:
-            player_snake_idx = await game.add_player(player)
-            return game, player_snake_idx
-        except AssertionError:
-            continue
+        if game.is_vacant():
+            return game
     g = Game()
-    player_snake_idx = await g.add_player(player)
     games.append(g)
-    return g, player_snake_idx
+    return g
 
 
-async def listen(socket, path):
-    print('new player connected', socket)
-    player = Player(str(uuid.uuid4()), socket)
-    game, player_snake_idx = await find_game(player)
-    await player.send({
-        'type': 'init',
-        'player_id': player.player_id,
-        'player_snake_idx': player_snake_idx
-    })
-    if not game.is_waiting():
-        for p in game.players:
-            await p.send({
-                'type': 'start',
-                'state': game.get_init_state()
-            })
-        asyncio.get_event_loop().create_task(game.start())
-    while True:
-        t = asyncio.get_event_loop().create_task(game.listen_to_player(player))
-        await asyncio.ensure_future(t)
-
-
-start_server = websockets.serve(listen, "localhost", 8765)
-asyncio.get_event_loop().run_until_complete(start_server)
-asyncio.get_event_loop().run_forever()
+while True:
+    print('listening for connections..')
+    c, address = s.accept()
+    print('new connection', address)
+    game = find_game()
+    player = Player(c, str(uuid.uuid4()), game)
+    player.start()
+    game.add_player(player)

@@ -1,69 +1,46 @@
-import asyncio
-import json
+import socket
+import uuid
 
-import pygame
-import websockets
-
-from main import Size, Board, Direction, Coordinates
-
-BOARD_SIZE = Size(400, 400)
-BLOCK_SIZE = Size(10, 10)
+from game import Board, BoardEventListener, BoardEventEmitter, Coordinates, Size
+from game import Direction
+from socket_thread import SocketThread
 
 
-class Player:
-    def __init__(self, socket, loop):
-        self.player_id = None
-        self.socket = socket
-        self.loop = loop
-        self.snake_idx = None
+class ClientGame(SocketThread, BoardEventListener):
+    def __init__(self, s, sid):
+        super(ClientGame, self).__init__(s, sid)
+        self.my_id = None
         self.board: Board = None
+        self.board_event_emitter = BoardEventEmitter(self)
 
-    async def listen_to_server(self):
-        message = json.loads(await self.socket.recv())
-        print('message', message)
-        if message['type'] == 'init':
-            self.player_id = message['player_id']
-            self.snake_idx = message['player_snake_idx']
-        elif message['type'] == 'start':
-            self.board = Board()
-            for player in message['state']['players']:
-                self.board.add_snake(player['player_id'], Coordinates(player['position'][0], player['position'][1]))
-            self.loop.create_task(self.listen_to_board())
-        elif message['type'] == 'turn':
-            self.board.turn(message['player_id'], Direction[message['direction']])
-        elif message['type'] == 'move':
-            self.board.move()
-            self.board.update()
+    def on_init(self, message):
+        self.my_id = message['id']
 
-    async def send(self, message):
-        await self.socket.send(json.dumps(message))
+    def on_start(self, message):
+        self.board = Board(
+            Size(message['board_size']['w'], message['board_size']['h']),
+            Size(message['block_size']['w'], message['block_size']['h'])
+        )
+        self.board_event_emitter.start()
+        print('initiated board')
 
-    async def listen_to_board(self):
-        running = True
-        while running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                    self.loop.stop()
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_LEFT:
-                        await self.send({'type': 'turn', 'direction': Direction.WEST.name, 'player_id': self.player_id})
-                    elif event.key == pygame.K_RIGHT:
-                        await self.send({'type': 'turn', 'direction': Direction.EAST.name, 'player_id': self.player_id})
-                    elif event.key == pygame.K_UP:
-                        await self.send({'type': 'turn', 'direction': Direction.NORTH.name, 'player_id': self.player_id})
-                    elif event.key == pygame.K_DOWN:
-                        await self.send({'type': 'turn', 'direction': Direction.SOUTH.name, 'player_id': self.player_id})
-            await asyncio.sleep(0.001)
+    def on_state(self, message):
+        blocks = []
+        for snake in message['snakes']:
+            for block in snake['blocks']:
+                blocks.append(Coordinates(block['x'], block['y']))
+        self.board.update(blocks, Coordinates(message['fruit']['x'], message['fruit']['y']))
+
+    def on_board_turn(self, direction: Direction):
+        self.send({'type': 'turn', 'direction': direction.name})
+
+    def on_board_quit(self):
+        self.close()
 
 
-async def main(loop):
-    uri = "ws://localhost:8765"
-    async with websockets.connect(uri) as websocket:
-        p = Player(websocket, loop)
-        while True:
-            await p.listen_to_server()
+s = socket.socket()
+s.connect(('127.0.0.1', 8082))
+t = ClientGame(s, str(uuid.uuid4()))
+t.start()
 
 
-loop = asyncio.get_event_loop()
-asyncio.get_event_loop().run_until_complete(main(loop))
