@@ -25,6 +25,8 @@ class ClientGame(SocketThread, BoardEventListener):
         print('initiated board')
 
     def on_state(self, message):
+        if message['state'] == 'GAME_OVER':
+            self.close()
         blocks = []
         for snake in message['snakes']:
             for block in snake['blocks']:

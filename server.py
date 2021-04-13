@@ -2,6 +2,7 @@ import random
 import socket
 import uuid
 from collections import deque
+from enum import Enum
 from time import sleep
 from typing import List, Dict
 
@@ -11,6 +12,12 @@ from socket_thread import SocketThread
 s = socket.socket()
 s.bind(('', 8082))
 s.listen(5)
+
+
+class GameState(Enum):
+    WAITING = 'WAITING'
+    IN_PROGRESS = 'IN_PROGRESS'
+    GAME_OVER = 'GAME_OVER'
 
 
 class Snake:
@@ -70,6 +77,7 @@ class Game:
         self.block_size = Size(8, 8)
         self.x_blocks = self.size.w // self.block_size.w
         self.y_blocks = self.size.h // self.block_size.h
+        self.state: GameState = GameState.WAITING
 
     def new_fruit(self) -> Coordinates:
         coords = Coordinates(random.randint(0, self.x_blocks - 1), random.randint(0, self.y_blocks - 1))
@@ -87,6 +95,7 @@ class Game:
         st.send({'type': 'init', 'id': st.sid})
         if not self.is_vacant():
             for snake in self.snakes.values():
+                self.state = GameState.IN_PROGRESS
                 snake.st.send({
                     'type': 'start',
                     'players': [s.st.sid for s in self.snakes.values()],
@@ -98,7 +107,8 @@ class Game:
     def get_state(self) -> dict:
         return {
             'snakes': [snake.get_state() for snake in self.snakes.values()],
-            'fruit': self.fruit.__dict__
+            'fruit': self.fruit.__dict__,
+            'state': self.state.value
         }
 
     def start(self):
@@ -108,8 +118,8 @@ class Game:
                 try:
                     eaten = snake.move(self.fruit, self.x_blocks, self.y_blocks)
                 except ValueError as e:
-                    print('game over')
-                    return
+                    self.state = GameState.GAME_OVER
+                    eaten = False
                 if eaten:
                     self.fruit = self.new_fruit()
             for snake in self.snakes.values():
