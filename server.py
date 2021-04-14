@@ -10,7 +10,7 @@ from game import Coordinates, Direction, Size
 from socket_thread import SocketThread
 
 s = socket.socket()
-s.bind(('', 8082))
+s.bind(('', 8081))
 s.listen(5)
 
 
@@ -21,10 +21,15 @@ class GameState(Enum):
 
 
 class Snake:
+    EAT_POINTS = 10
+    MOVE_POINTS = 1
+    TURN_POINTS = -5
+
     def __init__(self, blocks: List[Coordinates], st: SocketThread):
         self.blocks = deque(blocks)
         self.direction = Direction.EAST
         self.st = st
+        self.score = 0
 
     def turn(self, to_direction: Direction):
         if self.direction == to_direction:
@@ -32,6 +37,7 @@ class Snake:
         if self.direction.value[0] + to_direction.value[0] == 0 or self.direction.value[1] + to_direction.value[1] == 0:
             return
         self.direction = to_direction
+        self.score += self.TURN_POINTS
 
     def get_next_head(self) -> Coordinates:
         head = self.blocks[0]
@@ -50,25 +56,29 @@ class Snake:
         next_head = self.get_next_head()
         if next_head.x < 0 or \
             next_head.y < 0 or \
-            next_head.y > y_blocks or \
-            next_head.x > x_blocks or \
+            next_head.y >= y_blocks or \
+            next_head.x >= x_blocks or \
             self.are_coordinates_inside(next_head):
             raise ValueError('Invalid move')
         self.blocks.appendleft(next_head)
         if self.blocks[0] == fruit:
+            self.score += self.EAT_POINTS
             return True
         else:
             self.blocks.pop()
+        self.score += self.MOVE_POINTS
 
     def get_state(self) -> dict:
         return {
+            'id': self.st.sid,
             'blocks': [b.__dict__ for b in self.blocks],
-            'direction': self.direction.name
+            'direction': self.direction.name,
+            'score': self.score
         }
 
 
 class Game:
-    MAX_PLAYERS = 2
+    MAX_PLAYERS = 1
 
     def __init__(self):
         self.snakes: Dict[str, Snake] = {}
@@ -79,11 +89,13 @@ class Game:
         self.y_blocks = self.size.h // self.block_size.h
         self.state: GameState = GameState.WAITING
 
-    def new_fruit(self) -> Coordinates:
+    def get_vacant_coordinates(self) -> Coordinates:
         coords = Coordinates(random.randint(0, self.x_blocks - 1), random.randint(0, self.y_blocks - 1))
+        if self.fruit is not None and coords == self.fruit:
+            return self.get_vacant_coordinates()
         for snake in self.snakes.values():
             if snake.are_coordinates_inside(coords):
-                return self.new_fruit()
+                return self.get_vacant_coordinates()
         return coords
 
     def is_vacant(self):
@@ -91,7 +103,7 @@ class Game:
 
     def add_player(self, st: SocketThread):
         assert self.is_vacant()
-        self.snakes[st.sid] = Snake([Coordinates(0, 0)], st)
+        self.snakes[st.sid] = Snake([self.get_vacant_coordinates()], st)
         st.send({'type': 'init', 'id': st.sid})
         if not self.is_vacant():
             for snake in self.snakes.values():
@@ -112,7 +124,7 @@ class Game:
         }
 
     def start(self):
-        self.fruit = self.new_fruit()
+        self.fruit = self.get_vacant_coordinates()
         while self.state == GameState.IN_PROGRESS:
             for snake in self.snakes.values():
                 try:
@@ -121,7 +133,7 @@ class Game:
                     self.state = GameState.GAME_OVER
                     eaten = False
                 if eaten:
-                    self.fruit = self.new_fruit()
+                    self.fruit = self.get_vacant_coordinates()
             for snake in self.snakes.values():
                 try:
                     snake.st.send({
@@ -130,7 +142,7 @@ class Game:
                     })
                 except BrokenPipeError:
                     self.state = GameState.GAME_OVER
-            sleep(0.2)
+            sleep(0.1)
 
     def turn(self, player_id: str, direction):
         self.snakes[player_id].turn(Direction[direction])

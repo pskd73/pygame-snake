@@ -1,5 +1,6 @@
 import socket
 import uuid
+from collections import OrderedDict
 
 from game import Board, BoardEventListener, BoardEventEmitter, Coordinates, Size
 from game import Direction
@@ -25,12 +26,18 @@ class ClientGame(SocketThread, BoardEventListener):
 
     def on_state(self, message):
         if message['state'] == 'GAME_OVER':
+            self.board_event_emitter.mute()
             self.close()
         blocks = []
+        scores = OrderedDict({})
         for snake in message['snakes']:
+            scores[snake['id']] = snake['score']
             for block in snake['blocks']:
                 blocks.append(Coordinates(block['x'], block['y']))
-        self.board.update(blocks, Coordinates(message['fruit']['x'], message['fruit']['y']))
+        scores['My score'] = scores[self.my_id]
+        del scores[self.my_id]
+        scores.move_to_end('My score', last=False)
+        self.board.update(blocks, Coordinates(message['fruit']['x'], message['fruit']['y']), scores, message['state'] == 'GAME_OVER')
 
     def on_board_turn(self, direction: Direction):
         self.send({'type': 'turn', 'direction': direction.name})
@@ -40,7 +47,7 @@ class ClientGame(SocketThread, BoardEventListener):
 
 
 s = socket.socket()
-s.connect(('127.0.0.1', 8082))
+s.connect(('127.0.0.1', 8081))
 t = ClientGame(s, str(uuid.uuid4()))
 t.start()
 

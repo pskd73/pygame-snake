@@ -50,7 +50,7 @@ class Board:
     FRUIT_COLOR = Color(192, 192, 192)
 
     def __init__(self, size: Size, block_size: Size):
-        self.surface = pygame.display.set_mode(size.to_tuple())
+        self.surface = pygame.display.set_mode((size.w, size.h + 103))
         self.size = size
         self.block_size = block_size
         self.x_blocks = self.size.w // self.block_size.w
@@ -64,8 +64,21 @@ class Board:
     def clear(self):
         self.surface.fill((0, 0, 0))
 
-    def update(self, blocks: List[Coordinates], fruit: Coordinates):
+    def draw_score_card(self, scores: Dict[str, int], game_over: bool):
+        start_coords = Coordinates(0, self.size.h + 3 + 5)
+        pygame.draw.line(self.surface, (122, 122, 122), (0, self.size.h), self.size.to_tuple(), width=3)
+        for i, pid in enumerate(scores.keys()):
+            font = pygame.font.Font(pygame.font.get_default_font(), 14)
+            text = font.render('{}: {}'.format(pid, scores[pid]), True, (255, 255, 255))
+            self.surface.blit(text, (start_coords.x + 5, start_coords.y + i * 18))
+        if game_over:
+            font = pygame.font.Font(pygame.font.get_default_font(), 14)
+            text = font.render('GAME OVER', True, (255, 255, 255))
+            self.surface.blit(text, (self.size.w / 2 - text.get_size()[0] / 2, self.size.h + 103 - 18))
+
+    def update(self, blocks: List[Coordinates], fruit: Coordinates, scores: Dict[str, int], game_over: bool):
         self.clear()
+        self.draw_score_card(scores, game_over)
         for i, block in enumerate(blocks):
             pygame.draw.rect(
                 self.surface,
@@ -105,11 +118,18 @@ class BoardEventEmitter:
         self.listener = listener
         self.thread = None
         self.running = False
+        self.muted = False
 
     def start(self):
         self.running = True
         self.thread = threading.Thread(target=self.listen)
         self.thread.start()
+
+    def mute(self):
+        self.muted = True
+
+    def close(self):
+        self.running = False
 
     def listen(self):
         while self.running:
@@ -117,7 +137,7 @@ class BoardEventEmitter:
                 if event.type == pygame.QUIT:
                     self.running = False
                     self.listener.on_board_quit()
-                if event.type == pygame.KEYDOWN:
+                if not self.muted and event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_LEFT:
                         self.listener.on_board_turn(Direction.WEST)
                     elif event.key == pygame.K_RIGHT:
