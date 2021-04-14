@@ -59,6 +59,7 @@ class Board:
 
     def init(self):
         pygame.init()
+        pygame.display.set_caption('pskd\'s snake game')
         self.clear()
 
     def clear(self):
@@ -119,10 +120,12 @@ class BoardEventEmitter:
         self.thread = None
         self.running = False
         self.muted = False
+        self.delay = 0.1
 
-    def start(self):
+    def start(self, delay: float):
         self.running = True
         self.thread = threading.Thread(target=self.listen)
+        self.delay = delay
         self.thread.start()
 
     def mute(self):
@@ -146,3 +149,4 @@ class BoardEventEmitter:
                         self.listener.on_board_turn(Direction.NORTH)
                     elif event.key == pygame.K_DOWN:
                         self.listener.on_board_turn(Direction.SOUTH)
+            sleep(self.delay)

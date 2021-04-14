@@ -88,6 +88,7 @@ class Game:
         self.x_blocks = self.size.w // self.block_size.w
         self.y_blocks = self.size.h // self.block_size.h
         self.state: GameState = GameState.WAITING
+        self.delay = 0.2
 
     def get_vacant_coordinates(self) -> Coordinates:
         coords = Coordinates(random.randint(0, self.x_blocks - 1), random.randint(0, self.y_blocks - 1))
@@ -112,7 +113,8 @@ class Game:
                     'type': 'start',
                     'players': [s.st.sid for s in self.snakes.values()],
                     'board_size': self.size.__dict__,
-                    'block_size': self.block_size.__dict__
+                    'block_size': self.block_size.__dict__,
+                    'delay': self.delay
                 })
             self.start()
 
@@ -142,7 +144,7 @@ class Game:
                     })
                 except BrokenPipeError:
                     self.state = GameState.GAME_OVER
-            sleep(0.1)
+            sleep(self.delay)
 
     def turn(self, player_id: str, direction):
         self.snakes[player_id].turn(Direction[direction])
