@@ -7,9 +7,11 @@ class SocketThread:
         self.socket = s
         self.sid = sid
         self.thread: threading.Thread = None
+        self.running = False
 
     def start(self):
         self.thread = threading.Thread(target=self.listen)
+        self.running = True
         self.thread.start()
 
     def send(self, message):
@@ -17,6 +19,7 @@ class SocketThread:
         self.socket.send(json.dumps(message).encode())
 
     def close(self):
+        self.running = False
         self.socket.close()
 
     @staticmethod
@@ -33,9 +36,11 @@ class SocketThread:
 
     def listen(self):
         print('listening to', self.socket)
-        while True:
+        while self.running:
             messages = self.split_message(self.socket.recv(1024).decode())
             for message in messages:
+                if message == '':
+                    continue
                 message = json.loads(message)
                 print('received', message)
                 if message['type']:

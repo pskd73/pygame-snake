@@ -113,7 +113,7 @@ class Game:
 
     def start(self):
         self.fruit = self.new_fruit()
-        while True:
+        while self.state == GameState.IN_PROGRESS:
             for snake in self.snakes.values():
                 try:
                     eaten = snake.move(self.fruit, self.x_blocks, self.y_blocks)
@@ -123,10 +123,13 @@ class Game:
                 if eaten:
                     self.fruit = self.new_fruit()
             for snake in self.snakes.values():
-                snake.st.send({
-                    'type': 'state',
-                    **self.get_state()
-                })
+                try:
+                    snake.st.send({
+                        'type': 'state',
+                        **self.get_state()
+                    })
+                except BrokenPipeError:
+                    self.state = GameState.GAME_OVER
             sleep(0.2)
 
     def turn(self, player_id: str, direction):

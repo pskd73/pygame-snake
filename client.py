@@ -22,7 +22,6 @@ class ClientGame(SocketThread, BoardEventListener):
             Size(message['block_size']['w'], message['block_size']['h'])
         )
         self.board_event_emitter.start()
-        print('initiated board')
 
     def on_state(self, message):
         if message['state'] == 'GAME_OVER':
